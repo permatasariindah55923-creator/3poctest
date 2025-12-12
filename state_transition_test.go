@@ -1077,15 +1077,6 @@ func TestStateTransition_EIP7623(t *testing.T) {
 	assert.Equal(t, gaslimit2, res.UsedGas)
 }
 
-// TestDoubleDeductionBugFeeDelegationWithRatio tests the double deduction bug
-// when sender and feePayer are the same address with fee delegation ratio.
-// This is a reproduction of the bug described in:
-// https://github.com/kaiachain/kaia/issues/XXX
-//
-// The bug occurs in buyGas() when:
-// 1. Validation checks pass because they check sender and feePayer balance separately
-// 2. But execution deducts from both sender and feePayer (which are the same account)
-// 3. Result: balance can go negative, corrupting the blockchain state
 func TestDoubleDeductionBugFeeDelegationWithRatio(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -1101,18 +1092,11 @@ func TestDoubleDeductionBugFeeDelegationWithRatio(t *testing.T) {
 	totalFeeWei := new(big.Int).Mul(big.NewInt(int64(gasLimit)), gasPrice)
 	feePayerFee, senderFee := types.CalcFeeWithRatio(feeRatio, totalFeeWei)
 
-	// Calculate required balance for validation
-	// Validation checks separately:
-	// 1. sender balance >= senderFee + value
-	// 2. feePayer balance >= feePayerFee
-	// But they're the same account, so we need balance >= senderFee + feePayerFee + value
 
 	value := big.NewInt(0) // No value transfer for this test
 	requiredTotal := new(big.Int).Add(value, new(big.Int).Add(senderFee, feePayerFee))
 
-	// Set balance just enough to pass validation checks when sender == feePayer
-	// This is the crucial point: if we only check separately, we might accept
-	// a transaction that would double-deduct
+	
 	balance := new(big.Int).Set(requiredTotal)
 
 	mockMsg := mock_bc.NewMockMessage(ctrl)
@@ -1154,12 +1138,6 @@ func TestDoubleDeductionBugFeeDelegationWithRatio(t *testing.T) {
 	// Execute buyGas
 	st := NewStateTransition(evm, mockMsg)
 	err := st.buyGas()
-
-	// Assertions
-	// The bug manifests as either:
-	// 1. An error during execution (if negative balance check exists)
-	// 2. A negative balance (if no check exists)
-	// 3. Both SubBalance calls on same account (the actual bug)
 
 	if err != nil {
 		t.Logf("buyGas returned error: %v", err)
